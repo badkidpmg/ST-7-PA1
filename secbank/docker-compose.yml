@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  server:
+    build: ./server
+    container_name: secbank-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./server:/app
+      - secbank-data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - secbank-net
+
+  client:
+    build: ./client
+    container_name: secbank-client
+    depends_on:
+      - server
+    stdin_open: true
+    tty: true
+    networks:
+      - secbank-net
+
+networks:
+  secbank-net:
+    driver: bridge
+
+volumes:
+  secbank-data:
