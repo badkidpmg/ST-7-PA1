@@ -3,12 +3,15 @@ services:
     build: ./server
     container_name: secbank-server
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./server:/app
       - secbank-data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
+      - SECBANK_DB_PATH=/app/data/secbank.db
+
+    
     networks:
       - secbank-net
 
