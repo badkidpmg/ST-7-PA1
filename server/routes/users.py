@@ -110,6 +110,8 @@ def active_user(
                 "DELETE FROM sessions WHERE token_hash = ?",
                 (token_hash,),
             )
+
+            connection.commit()
             raise HTTPException(status_code=401, detail="Sesión caducada")
 
     return user_id, username, token_hash

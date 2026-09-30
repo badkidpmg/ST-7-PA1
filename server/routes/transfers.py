@@ -1,6 +1,20 @@
-from fastapi import APIRouter, HTTPException, status
+import json
+import sqlite3
+import time
+import uuid
+from pathlib import Path
 
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import ValidationError
+
+from server.database import get_db_path
 from server.models import TransferRequest
+from server.routes.users import active_user, get_bearer_token
+from server.transfer_mac import (
+    get_hmac_key,
+    make_signature,
+    verify_signature,
+)
 
 
 router = APIRouter(
@@ -8,10 +22,104 @@ router = APIRouter(
     tags=["transfers"],
 )
 
+TIMESTAMP_WINDOW_SECONDS = 60
+
 
 @router.post("/transfer")
-def create_transfer(transfer: TransferRequest) -> None:
+async def create_transfer(
+    request: Request,
+    user: tuple[int, str, str] = Depends(active_user),
+    db_path: Path = Depends(get_db_path),
+    authorization: str | None = Header(default=None),
+    x_nonce: str | None = Header(default=None),
+    x_timestamp: str | None = Header(default=None),
+    x_signature: str | None = Header(default=None),
+) -> dict[str, str]:
+    if not x_nonce or not x_timestamp or not x_signature:
+        raise HTTPException(
+            status_code=400,
+            detail="Faltan cabeceras de seguridad",
+        )
+
+    token = get_bearer_token(authorization)
+    body = await request.body()
+
+    try:
+        key = get_hmac_key()
+    except RuntimeError:
+        raise HTTPException(
+            status_code=503,
+            detail="Clave HMAC no configurada en el servidor",
+        )
+
+    expected = make_signature(
+        key=key,
+        method=request.method,
+        path=request.url.path,
+        token=token,
+        timestamp=x_timestamp,
+        nonce=x_nonce,
+        body=body,
+    )
+
+    if not verify_signature(expected, x_signature):
+        raise HTTPException(
+            status_code=401,
+            detail="Firma HMAC no válida",
+        )
+
+    try:
+        transfer = TransferRequest.model_validate(json.loads(body))
+    except (ValueError, ValidationError):
+        raise HTTPException(
+            status_code=422,
+            detail="Transferencia inválida",
+        )
+
+    try:
+        parsed_nonce = uuid.UUID(x_nonce)
+
+        if parsed_nonce.version != 4 or str(parsed_nonce) != x_nonce:
+            raise ValueError
+
+        if not x_timestamp.isdecimal():
+            raise ValueError
+
+        timestamp = int(x_timestamp)
+
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=400,
+            detail="Nonce o timestamp con formato inválido",
+        )
+
+    now = int(time.time())
+
+    if abs(now - timestamp) > TIMESTAMP_WINDOW_SECONDS:
+        raise HTTPException(
+            status_code=400,
+            detail="Timestamp fuera de la ventana permitida",
+        )
+
+    try:
+        with sqlite3.connect(db_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO processed_nonces (nonce, user_id, seen_at)
+                VALUES (?, ?, ?)
+                """,
+                (x_nonce, user[0], now),
+            )
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Replay: nonce ya procesado",
+        )
+
     raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Transferencias no disponibles hasta implementar autenticación",
+        status_code=501,
+        detail=(
+            "HMAC y antirreplay válidos, pero la transferencia "
+            "todavía no se registra"
+        ),
     )

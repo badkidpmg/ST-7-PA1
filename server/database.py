@@ -39,14 +39,18 @@ def init_db(db_path: Path) -> None:
 
         if "failed_attempts" not in columns:
             connection.execute(
-                "ALTER TABLE users "
-                "ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0"
+                """
+                ALTER TABLE users
+                ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0
+                """
             )
 
         if "locked_until" not in columns:
             connection.execute(
-                "ALTER TABLE users "
-                "ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0"
+                """
+                ALTER TABLE users
+                ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0
+                """
             )
 
         connection.execute(
@@ -61,6 +65,19 @@ def init_db(db_path: Path) -> None:
         )
 
         connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sessions_user "
-            "ON sessions(user_id)"
+            """
+            CREATE INDEX IF NOT EXISTS idx_sessions_user
+            ON sessions(user_id)
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS processed_nonces (
+                nonce TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                seen_at INTEGER NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
         )
