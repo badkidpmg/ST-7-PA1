@@ -1,29 +1,41 @@
 # ST-7-PA1 (SecBank)
 
-## Basic setup
+## Project structure
+- `secbank/server`: FastAPI backend
+- `secbank/client`: client container image
+- `secbank/docker-compose.yml`: local orchestration for `server` and `client`
 
-1. Go to the project root:
+## Basic setup
+1. Go to the compose directory:
    ```bash
    cd /home/runner/work/ST-7-PA1/ST-7-PA1/secbank
    ```
-2. Start containers:
+2. Build and start the stack:
    ```bash
-   docker compose up --build
+   docker compose up --build -d
    ```
-3. The API is available at:
-   - `http://localhost:8080/health`
+3. Check API health:
+   ```bash
+   curl http://localhost:8080/health
+   ```
 
-## Run tests
-
-From repository root:
+## Run tests from the client container
+From `/home/runner/work/ST-7-PA1/ST-7-PA1/secbank`, run:
 
 ```bash
-cd /home/runner/work/ST-7-PA1/ST-7-PA1
-PYTHONPATH=/home/runner/work/ST-7-PA1/ST-7-PA1/secbank/server python -m pytest -q secbank/server/tests
+docker compose run --rm --no-deps \
+  -v ./server:/workspace/server \
+  client sh -lc "pip install --no-cache-dir -r /workspace/server/requirements.txt pytest httpx && PYTHONPATH=/workspace/server python -m pytest -q /workspace/server/tests"
 ```
 
-## How to know tests went well
-
-Tests passed when:
+## How to know tests passed
+Tests went well when all of the following are true:
 - the command exits with code `0`
-- pytest summary shows all tests passing (for example, output ending with `X passed` and no `FAILED` lines)
+- pytest output ends with `N passed`
+- there are no `FAILED` lines in the summary
+
+## Stop the environment
+```bash
+cd /home/runner/work/ST-7-PA1/ST-7-PA1/secbank
+docker compose down
+```
