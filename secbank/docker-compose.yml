@@ -1,0 +1,30 @@
+services:
+  server:
+    build: ./server
+    container_name: secbank-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./server:/app
+      - secbank-data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - secbank-net
+
+  client:
+    build: ./client
+    container_name: secbank-client
+    stdin_open: true # Mantiene abierto el buffer de entrada estándar
+    tty: true        # Asigna una terminal virtual
+    depends_on:
+      - server
+    networks:        # <-- Añadido: Conecta el cliente a la misma red
+      - secbank-net
+
+networks:
+  secbank-net:
+    driver: bridge
+
+volumes:
+  secbank-data:
