@@ -159,6 +159,8 @@ def login(
                 (0 if next_lock else failures, next_lock, user_id),
             )
 
+            connection.commit()
+
             if next_lock:
                 raise HTTPException(
                     status_code=429,
