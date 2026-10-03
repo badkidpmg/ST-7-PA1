@@ -86,7 +86,7 @@ def test_replay_and_timestamp_window(tmp_path, monkeypatch) -> None:
         first = client.post(PATH, content=content, headers=headers)
         repeated = client.post(PATH, content=content, headers=headers)
 
-        assert first.status_code == 501
+        assert first.status_code == 201
         assert repeated.status_code == 409
         assert repeated.json()["detail"] == "Replay: nonce ya procesado"
 
@@ -94,7 +94,7 @@ def test_replay_and_timestamp_window(tmp_path, monkeypatch) -> None:
         content, headers = signed_request(token, body, new_nonce, now)
 
         distinct = client.post(PATH, content=content, headers=headers)
-        assert distinct.status_code == 501
+        assert distinct.status_code == 201
 
         old_timestamp = str(int(time.time()) - 300)
         content, headers = signed_request(

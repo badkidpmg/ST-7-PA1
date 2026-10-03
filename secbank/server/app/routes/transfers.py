@@ -25,7 +25,7 @@ router = APIRouter(
 TIMESTAMP_WINDOW_SECONDS = 60
 
 
-@router.post("/transfer")
+@router.post("/transfer", status_code=201)
 async def create_transfer(
     request: Request,
     user: tuple[int, str, str] = Depends(active_user),
@@ -101,8 +101,39 @@ async def create_transfer(
             detail="Timestamp fuera de la ventana permitida",
         )
 
+
+    transaction_id = str(uuid.uuid4())
+
     try:
         with sqlite3.connect(db_path) as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+
+            connection.execute(
+                """
+                INSERT INTO transactions (
+                    id,
+                    user_id,
+                    tx_id,
+                    origin_account,
+                    destination_account,
+                    amount,
+                    currency,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transaction_id,
+                    user[0],
+                    transfer.tx_id,
+                    transfer.origin_account,
+                    transfer.destination_account,
+                    str(transfer.amount),
+                    transfer.currency,
+                    now,
+                ),
+            )
+
             connection.execute(
                 """
                 INSERT INTO processed_nonces (nonce, user_id, seen_at)
@@ -110,16 +141,15 @@ async def create_transfer(
                 """,
                 (x_nonce, user[0], now),
             )
+
     except sqlite3.IntegrityError:
         raise HTTPException(
             status_code=409,
             detail="Replay: nonce ya procesado",
         )
 
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "HMAC y antirreplay válidos, pero la transferencia "
-            "todavía no se registra"
-        ),
-    )
+    return {
+        "status": "created",
+        "message": "Transferencia registrada",
+        "transaction_id": transaction_id,
+    }

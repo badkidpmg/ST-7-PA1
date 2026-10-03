@@ -81,3 +81,26 @@ def init_db(db_path: Path) -> None:
             )
             """
         )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transactions (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                tx_id TEXT NOT NULL,
+                origin_account TEXT NOT NULL,
+                destination_account TEXT NOT NULL,
+                amount TEXT NOT NULL,
+                currency TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_transactions_user
+            ON transactions(user_id)
+            """
+        )

@@ -76,7 +76,7 @@ def test_signed_transfer_and_tampering(tmp_path, monkeypatch) -> None:
             content=body,
             headers=headers,
         )
-        assert valid.status_code == 501
+        assert valid.status_code == 201
 
         modified = json.loads(body)
         modified["amount"] = 9999.99
