@@ -10,6 +10,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - SECBANK_DB_PATH=/app/data/secbank.db
+      - SECBANK_HMAC_KEY_HEX=${SECBANK_HMAC_KEY_HEX}
 
     
     networks:
@@ -24,6 +25,8 @@ services:
       - server
     networks:        # <-- Añadido: Conecta el cliente a la misma red
       - secbank-net
+    environment:
+      - SECBANK_HMAC_KEY_HEX=${SECBANK_HMAC_KEY_HEX}
 
 networks:
   secbank-net:

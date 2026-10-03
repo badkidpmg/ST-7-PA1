@@ -2,8 +2,18 @@ import sys
 import time
 import requests
 import getpass
+import hashlib
+import hmac
+import json
+import os
+import re
+import uuid
+from decimal import Decimal, InvalidOperation
 
 SERVER_URL = "http://server:8080"
+
+TRANSFER_PATH = "/api/v1/transfer"
+HEX_64 = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def esperar_y_conectar(max_retries: int = 10, delay: int = 2) -> bool:
@@ -54,9 +64,10 @@ def registrar_usuario() -> bool:
         }
         
         response = requests.post(
-            f"{SERVER_URL}/api/v1/register",
-            json=data,
-            timeout=5
+            f"{SERVER_URL}{TRANSFER_PATH}",
+            data=body,
+            headers=headers,
+            timeout=5,
         )
         
         if response.status_code == 201:
@@ -196,15 +207,175 @@ def cerrar_sesion(token: str) -> bool:
         print(f"[Error] {e}")
         return False
 
+def get_hmac_key() -> bytes:
+    value = os.environ.get("SECBANK_HMAC_KEY_HEX", "")
+
+    if not HEX_64.fullmatch(value):
+        raise RuntimeError(
+            "SECBANK_HMAC_KEY_HEX debe contener 64 caracteres "
+            "hexadecimales (32 bytes)."
+        )
+
+    return bytes.fromhex(value)
+
+
+def signed_bytes(
+    method: str,
+    path: str,
+    token: str,
+    timestamp: str,
+    nonce: str,
+    body: bytes,
+) -> bytes:
+    parts = (
+        method.encode("ascii"),
+        path.encode("ascii"),
+        token.encode("ascii"),
+        timestamp.encode("ascii"),
+        nonce.encode("ascii"),
+        body,
+    )
+
+    return b"".join(
+        len(part).to_bytes(4, "big") + part
+        for part in parts
+    )
+
+
+def make_signature(
+    key: bytes,
+    method: str,
+    path: str,
+    token: str,
+    timestamp: str,
+    nonce: str,
+    body: bytes,
+) -> str:
+    message = signed_bytes(
+        method,
+        path,
+        token,
+        timestamp,
+        nonce,
+        body,
+    )
+
+    return hmac.new(key, message, hashlib.sha256).hexdigest()
+
+
+def enviar_transferencia(token: str) -> bool:
+    print("\n=== NUEVA TRANSFERENCIA ===")
+
+    try:
+        tx_id = input("ID de transferencia: ").strip()
+        origin_account = input("Cuenta de origen: ").strip()
+        destination_account = input("Cuenta de destino: ").strip()
+        amount_text = input("Importe: ").strip().replace(",", ".")
+        currency = input("Moneda (ej. EUR): ").strip().upper()
+
+        if not tx_id or not origin_account or not destination_account:
+            print("[Error] Todos los campos son obligatorios.")
+            return False
+
+        if len(currency) != 3:
+            print("[Error] La moneda debe tener exactamente 3 caracteres.")
+            return False
+
+        try:
+            amount = Decimal(amount_text)
+        except InvalidOperation:
+            print("[Error] El importe no es válido.")
+            return False
+
+        if amount <= 0:
+            print("[Error] El importe debe ser mayor que cero.")
+            return False
+
+        payload = {
+            "tx_id": tx_id,
+            "origin_account": origin_account,
+            "destination_account": destination_account,
+            "amount": str(amount),
+            "currency": currency,
+            "timestamp": int(time.time()),
+        }
+
+        body = json.dumps(
+            payload,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+        nonce = str(uuid.uuid4())
+        timestamp = str(int(time.time()))
+        key = get_hmac_key()
+
+        signature = make_signature(
+            key=key,
+            method="POST",
+            path=TRANSFER_PATH,
+            token=token,
+            timestamp=timestamp,
+            nonce=nonce,
+            body=body,
+        )
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "X-Nonce": nonce,
+            "X-Timestamp": timestamp,
+            "X-Signature": signature,
+        }
+
+        response = requests.post(
+            f"{SERVER_URL}{TRANSFER_PATH}",
+            data=body,
+            headers=headers,
+            timeout=5,
+        )
+
+        if response.status_code == 201:
+            result = response.json()
+            print("\n✓ Transferencia registrada correctamente")
+            print(f"  ID interno: {result.get('transaction_id')}")
+            return True
+
+        if response.status_code == 409:
+            print("[Error] La transferencia fue rechazada: nonce repetido.")
+            return False
+
+        if response.status_code == 401:
+            print("[Error] Firma o sesión no válida.")
+            return False
+
+        try:
+            detail = response.json().get("detail", "Error desconocido")
+        except ValueError:
+            detail = response.text[:300] or "(respuesta vacía)"
+
+        print(f"[Error HTTP {response.status_code}] {detail}")
+        return False
+
+    except RuntimeError as error:
+        print(f"[Error de configuración] {error}")
+        return False
+    except requests.exceptions.Timeout:
+        print("[Error] Tiempo de espera agotado.")
+        return False
+    except requests.exceptions.RequestException as error:
+        print(f"[Error de red] {error}")
+        return False
+
 
 def menu_autenticado(token: str) -> bool:
     """Menú para usuario autenticado. Retorna False para cerrar sesión."""
     while True:
         print("\n=== MENÚ SECBANK (AUTENTICADO) ===")
         print("1. Ver mi perfil")
-        print("2. Comprobar salud del servidor")
-        print("3. Cerrar sesión")
-        print("4. Salir")
+        print("2. Enviar transferencia")
+        print("3. Comprobar salud del servidor")
+        print("4. Cerrar sesión")
+        print("5. Salir")
         
         try:
             opcion = input("\nSelecciona una opción: ").strip()
@@ -215,20 +386,21 @@ def menu_autenticado(token: str) -> bool:
         if opcion == "1":
             obtener_usuario_actual(token)
         elif opcion == "2":
+            enviar_transferencia(token)
+        elif opcion == "3":
             try:
                 r = requests.get(f"{SERVER_URL}/health", timeout=3)
                 print(f"\n[Servidor]: {r.json()}")
-            except Exception as e:
-                print(f"[Error]: {e}")
-        elif opcion == "3":
-            if cerrar_sesion(token):
-                return False  # Volver al menú principal
+            except requests.exceptions.RequestException as error:
+                print(f"[Error]: {error}")
         elif opcion == "4":
+            if cerrar_sesion(token):
+                return False
+        elif opcion == "5":
             print("Saliendo de la aplicación...")
             sys.exit(0)
         else:
             print("Opción no válida. Inténtalo de nuevo.")
-
 
 def menu_principal() -> None:
     """Menú principal sin autenticar."""
