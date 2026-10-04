@@ -91,10 +91,22 @@ def test_replay_and_timestamp_window(tmp_path, monkeypatch) -> None:
         assert repeated.json()["detail"] == "Replay: nonce ya procesado"
 
         new_nonce = str(uuid.uuid4())
-        content, headers = signed_request(token, body, new_nonce, now)
+        new_timestamp = str(int(time.time()))
 
-        distinct = client.post(PATH, content=content, headers=headers)
-        assert distinct.status_code == 201
+        new_content, new_headers = signed_request(
+            token,
+            body,
+            new_nonce,
+            new_timestamp,
+        )
+
+        same_transfer_new_nonce = client.post(
+            PATH,
+            content=new_content,
+            headers=new_headers,
+        )
+
+        assert same_transfer_new_nonce.status_code == 201
 
         old_timestamp = str(int(time.time()) - 300)
         content, headers = signed_request(
