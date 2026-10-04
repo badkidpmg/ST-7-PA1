@@ -64,9 +64,8 @@ def registrar_usuario() -> bool:
         }
         
         response = requests.post(
-            f"{SERVER_URL}{TRANSFER_PATH}",
-            data=body,
-            headers=headers,
+            f"{SERVER_URL}/api/v1/register",
+            json=data,
             timeout=5,
         )
         
