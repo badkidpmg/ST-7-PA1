@@ -68,18 +68,22 @@ def test_same_password_gets_different_argon2_hashes(
         assert first.status_code == 201
         assert second.status_code == 201
 
-    with sqlite3.connect(db_path) as connection:
-        hashes = [
-            row[0]
-            for row in connection.execute(
-                """
-                SELECT password_hash
-                FROM users
-                ORDER BY username
-                """
-            ).fetchall()
-        ]
+        with sqlite3.connect(db_path) as connection:
+            hashes = [
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT password_hash
+                    FROM users
+                    WHERE username IN (?, ?)
+                    ORDER BY username
+                    """,
+                    ("usuario_uno", "usuario_dos"),
+                ).fetchall()
+            ]
 
     assert len(hashes) == 2
+    assert hashes[0] != hashes[1]
+    assert all(value.startswith("$argon2id$") for value in hashes)
     assert hashes[0] != hashes[1]
     assert all(password_hash.startswith("$argon2id$") for password_hash in hashes)

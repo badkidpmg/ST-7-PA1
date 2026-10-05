@@ -37,6 +37,11 @@ def init_db(db_path: Path) -> None:
             for row in connection.execute("PRAGMA table_info(users)")
         }
 
+        
+
+
+
+
         if "failed_attempts" not in columns:
             connection.execute(
                 """
@@ -52,6 +57,7 @@ def init_db(db_path: Path) -> None:
                 ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0
                 """
             )
+
 
         connection.execute(
             """
