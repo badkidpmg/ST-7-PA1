@@ -51,6 +51,5 @@
 | server/tests/test_*.py       | Tests (14 tests)              | Completado      |
 | server/scripts/seed_users.py | Seed de usuarios demo         | Completado      |
 | README.md                    | Documentación del proyecto    | Completado      |
-| CHECK_TESTS.md               | Guía de verificación de tests | Completado      |
-| CONTROL.md                   | Esta tabla de control         | Completado      |
+
 
